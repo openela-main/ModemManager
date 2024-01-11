@@ -1,0 +1,48 @@
+From cade7a759cfd98922de0bb96bfb29721d861e25e Mon Sep 17 00:00:00 2001
+From: Lubomir Rintel <lkundrak@v3.sk>
+Date: Tue, 13 Dec 2022 18:14:51 +0100
+Subject: [PATCH] libmm-glib,common-helpers: avoid using mm_new_iso8601_time()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+It requires newer glib than we do:
+
+  ../libmm-glib/mm-common-helpers.c: In function ‘mm_new_iso8601_time’:
+  ../libmm-glib/mm-common-helpers.c:1787:9: warning: ‘g_time_zone_new_offset’ is deprecated: Not available before 2.58 [-Wdeprecated-declarations]
+   1787 |         tz = g_time_zone_new_offset (offset_minutes * 60);
+        |         ^~
+  In file included from /usr/include/glib-2.0/glib/gdatetime.h:33:
+  /usr/include/glib-2.0/glib/gtimezone.h:67:25: note: declared here
+     67 | GTimeZone *             g_time_zone_new_offset                          (gint32       seconds);
+        |                         ^~~~~~~~~~~~~~~~~~~~~~
+
+Let's not use the routine as opposed to bumping our requirement so that
+we don't lose ability to build on CentOS 8.
+---
+ libmm-glib/mm-common-helpers.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/libmm-glib/mm-common-helpers.c b/libmm-glib/mm-common-helpers.c
+index de49136d..91371e96 100644
+--- a/libmm-glib/mm-common-helpers.c
++++ b/libmm-glib/mm-common-helpers.c
+@@ -1783,8 +1783,14 @@ mm_new_iso8601_time (guint    year,
+ 
+     if (have_offset) {
+         g_autoptr(GTimeZone) tz = NULL;
++        g_autofree gchar *identifier = NULL;
+ 
+-        tz = g_time_zone_new_offset (offset_minutes * 60);
++        identifier = g_strdup_printf ("%c%02u:%02u:00",
++                                      (offset_minutes >= 0) ? '+' : '-',
++                                      ABS (offset_minutes) / 60,
++                                      ABS (offset_minutes) % 60);
++
++        tz = g_time_zone_new (identifier);
+         dt = g_date_time_new (tz, year, month, day, hour, minute, second);
+     } else
+         dt = g_date_time_new_utc (year, month, day, hour, minute, second);
+-- 
+2.38.1
+
